@@ -1,0 +1,248 @@
+import java.util.*;
+
+class Ass {
+    Map<String, List<String>> grammar = new LinkedHashMap<>();
+
+    void makeGrammar(String s) {
+        String[] arr = s.split("\n");
+        for (String a : arr) {
+            String[] b = a.split("->");
+            String lhs = b[0].trim();
+            List<String> p = grammar.getOrDefault(lhs, new ArrayList<>());
+            for (String q : b[1].trim().split("\\|")) p.add(q.trim());
+            grammar.put(lhs, p);
+        }
+    }
+
+    Map<String, List<String>> removeLeft() {
+        Map<String, List<String>> newGrammar = new LinkedHashMap<>();
+
+        for (String x : grammar.keySet()) {
+            List<String> alpha = new ArrayList<>();
+            List<String> beta = new ArrayList<>();
+            for (String y : grammar.get(x)) {
+                if (y.startsWith(x)) alpha.add(y.substring(x.length()));
+                else beta.add(y);
+            }
+
+            if (alpha.isEmpty()) {
+                newGrammar.put(x, grammar.get(x));
+                continue;
+            }
+
+            String newKey = x + "'";
+            List<String> p1 = new ArrayList<>();
+            for (String b : beta) p1.add(b + newKey);
+            newGrammar.put(x, p1);
+
+            List<String> p2 = new ArrayList<>();
+            for (String a : alpha) p2.add(a + newKey);
+            p2.add("#");
+            newGrammar.put(newKey, p2);
+        }
+
+        return newGrammar;
+    }
+
+    Map<String, List<String>> leftFactor() {
+        Map<String, List<String>> mp = grammar;
+        Map<String, List<String>> newGrammar;
+        boolean flag;
+
+        do {
+            newGrammar = new LinkedHashMap<>();
+            flag = true;
+
+            for (String x : mp.keySet()) {
+                List<String> y = mp.get(x);
+                String alpha = getMaxPrefix(y);
+                if (alpha.length() == 0) {
+                    newGrammar.put(x, y);
+                    continue;
+                }
+
+                flag = false;
+                List<String> beta = new ArrayList<>();
+                List<String> gamma = new ArrayList<>();
+
+                for (String a : y) {
+                    if (a.startsWith(alpha)) {
+                        String q = a.substring(alpha.length());
+                        if (q.length() == 0) q = "#";
+                        beta.add(q);
+                    } else gamma.add(a);
+                }
+
+                String newKey = x + "'";
+                List<String> p = new ArrayList<>();
+                p.add(alpha + newKey);
+                p.addAll(gamma);
+                newGrammar.put(x, p);
+
+                newGrammar.put(newKey, beta);
+            }
+
+            mp = newGrammar;
+        } while (!flag);
+
+        return newGrammar;
+    }
+
+    String getMaxPrefix(List<String> str) {
+        if (str == null || str.isEmpty()) return "";
+        String bestPrefix = "";
+        int maxCount = 0;
+
+        for (String s : str) {
+            for (int i = 1; i <= s.length(); i++) {
+                String prefix = s.substring(0, i);
+                int count = 0;
+
+                for (String t : str) {
+                    if (t.startsWith(prefix)) count++;
+                }
+
+                if (count > maxCount || (count == maxCount && prefix.length() > bestPrefix.length())) {
+                    maxCount = count;
+                    bestPrefix = prefix;
+                }
+            }
+        }
+
+        if (maxCount <= 1) return "";
+        return bestPrefix;
+    }
+
+    Map<String, Set<String>> getFirst(Map<String, List<String>> mp) {
+        Map<String, Set<String>> first = new LinkedHashMap<>();
+        for (String x : mp.keySet()) first.put(x, new HashSet<>());
+
+        boolean changed;
+        do {
+            changed = false;
+            for (String key : mp.keySet()) {
+                for (String prod : mp.get(key)) {
+                    if (prod.equals("#")) {
+                        if (first.get(key).add("#")) changed = true;
+                        continue;
+                    }
+
+                    for (int i = 0; i < prod.length();) {
+                        String symbol = "" + prod.charAt(i);
+                        if (i + 1 < prod.length() && prod.charAt(i + 1) == '\'') {
+                            symbol += "'";
+                            i++;
+                        }
+
+                        if (Character.isLowerCase(symbol.charAt(0)) || !mp.containsKey(symbol)) {
+                            if (first.get(key).add(symbol)) changed = true;
+                            break;
+                        }
+
+                        boolean hasEps = false;
+                        for (String t : first.get(symbol)) {
+                            if (!t.equals("#") && first.get(key).add(t)) changed = true;
+                            if (t.equals("#")) hasEps = true;
+                        }
+
+                        if (!hasEps) break;
+                        i++;
+                        if (i == prod.length()) if (first.get(key).add("#")) changed = true;
+                    }
+                }
+            }
+        } while (changed);
+
+        Map<String, Set<String>> firstSet = new LinkedHashMap<>();
+        for (String key : grammar.keySet()) firstSet.put(key, first.get(key));
+        return firstSet;
+    }
+
+    Map<String, Set<String>> getFollow(Map<String, List<String>> mp, Map<String, Set<String>> first) {
+        Map<String, Set<String>> follow = new LinkedHashMap<>();
+        for (String x : mp.keySet()) follow.put(x, new HashSet<>());
+
+        String start = mp.keySet().iterator().next();
+        follow.get(start).add("$");
+
+        boolean changed;
+        do {
+            changed = false;
+
+            for (String key : mp.keySet()) {
+                for (String prod : mp.get(key)) {
+                    for (int i = 0; i < prod.length();) {
+                        String symbol = "" + prod.charAt(i);
+                        if (i + 1 < prod.length() && prod.charAt(i + 1) == '\'') {
+                            symbol += "'";
+                            i++;
+                        }
+                        if (!mp.containsKey(symbol)) {
+                            i++;
+                            continue;
+                        }
+
+                        int j = i + 1;
+                        boolean hasEps = false;
+                        for (; j < prod.length();) {
+                            String next = "" + prod.charAt(j);
+                            if (j + 1 < prod.length() && prod.charAt(j + 1) == '\'') {
+                                next += "'";
+                                j++;
+                            }
+
+                            if (Character.isLowerCase(next.charAt(0)) || !mp.containsKey(next)) {
+                                if (follow.get(symbol).add(next)) changed = true;
+                                hasEps = false;
+                                break;
+                            }
+
+                            if (follow.get(symbol).addAll(first.get(next))) {
+                                changed = true;
+                                if (first.get(next).contains("#")) hasEps = true;
+                            }
+
+                            if (!hasEps) break;
+                            j++;
+                        }
+
+                        if (j >= prod.length() || hasEps) {
+                            if (follow.get(symbol).addAll(follow.get(key))) changed = true;
+                        }
+
+                        i++;
+                    }
+                }
+            }
+        } while (changed);
+
+        Map<String, Set<String>> followSet = new LinkedHashMap<>();
+        for (String key : grammar.keySet()) followSet.put(key, follow.get(key));
+        return followSet;
+    }
+
+    void display(Map<String, ? extends Collection<String>> mp) {
+        for (String key : mp.keySet()) {
+            System.out.println(key + " -> " + String.join(" | ", mp.get(key)));
+        }
+    }
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        String inp = sc.useDelimiter("\\A").next();
+
+        Ass A = new Ass();
+        A.makeGrammar(inp);
+
+        Map<String, List<String>> leftRec = A.removeLeft();
+        Map<String, List<String>> leftFac = A.leftFactor();
+        Map<String, Set<String>> firsts = A.getFirst(leftRec);
+        Map<String, Set<String>> follows = A.getFollow(leftRec, firsts);
+
+        A.display(A.grammar);
+        A.display(leftRec);
+        A.display(leftFac);
+        A.display(firsts);
+        A.display(follows);
+    }
+}
